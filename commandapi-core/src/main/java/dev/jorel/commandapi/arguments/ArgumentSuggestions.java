@@ -281,7 +281,7 @@ public interface ArgumentSuggestions<CommandSender> {
 	 * @return true if the current input is a prefix of the suggestion, false otherwise
 	 */
 	private static boolean shouldSuggest(SuggestionsBuilder builder, String suggestion) {
-		return suggestion.toLowerCase(Locale.ROOT).startsWith(builder.getRemaining().toLowerCase(Locale.ROOT));
+		return suggestion.toLowerCase(Locale.ROOT).contains(builder.getRemaining().toLowerCase(Locale.ROOT));
 	}
 
 	/**

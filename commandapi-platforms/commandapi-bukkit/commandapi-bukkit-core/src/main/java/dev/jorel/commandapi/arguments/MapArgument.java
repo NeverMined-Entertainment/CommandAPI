@@ -13,6 +13,7 @@ import dev.jorel.commandapi.executors.CommandArguments;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 /**
  * An argument that represents a key-value pair.
@@ -30,8 +31,8 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 	private final StringParser<K> keyMapper;
 	private final StringParser<V> valueMapper;
 
-	private final ResultList keyList;
-	private final ResultList valueList;
+	private final Supplier<List<String>> keyListSupplier;
+	private final Supplier<List<String>> valueListSupplier;
 	private final boolean allowValueDuplicates;
 	private final boolean keyListEmpty;
 	private final boolean valueListEmpty;
@@ -42,7 +43,7 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 	 * @param nodeName  the name to assign to this argument node
 	 * @param delimiter This is used to separate key-value pairs
 	 */
-	MapArgument(String nodeName, String delimiter, String separator, StringParser<K> keyMapper, StringParser<V> valueMapper, List<String> keyList, List<String> valueList, boolean allowValueDuplicates) {
+	MapArgument(String nodeName, String delimiter, String separator, StringParser<K> keyMapper, StringParser<V> valueMapper, Supplier<List<String>> keyListSupplier, Supplier<List<String>> valueListSupplier, boolean allowValueDuplicates) {
 		super(nodeName, StringArgumentType.greedyString());
 
 		this.delimiter = delimiter;
@@ -50,25 +51,32 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 		this.keyMapper = keyMapper;
 		this.valueMapper = valueMapper;
 
-		this.keyList = ResultList.formatResults(keyList, delimiter);
-		this.valueList = ResultList.formatResults(valueList, separator);
+		this.keyListSupplier = keyListSupplier;
+		this.valueListSupplier = valueListSupplier;
 		this.allowValueDuplicates = allowValueDuplicates;
 
-		this.keyListEmpty = keyList == null;
-		this.valueListEmpty = valueList == null;
+		this.keyListEmpty = keyListSupplier == null;
+		this.valueListEmpty = valueListSupplier == null;
 
 		applySuggestions();
 	}
 
 	private void applySuggestions() {
 		super.replaceSuggestions((info, builder) -> {
+			// Rebuild ResultLists from the current state of the lists on every tab-completion,
+			// so that dynamic/live lists are always reflected in suggestions
+			List<String> currentKeys = keyListSupplier != null ? keyListSupplier.get() : null;
+			List<String> currentValues = valueListSupplier != null ? valueListSupplier.get() : null;
+			ResultList currentKeyList = ResultList.formatResults(currentKeys, delimiter);
+			ResultList currentValueList = ResultList.formatResults(currentValues, separator);
+
 			StringReader reader = new StringReader(info.currentArg());
 
 			// Read through the keys and values
 			Set<String> givenKeys = new HashSet<>();
 			Set<String> givenValues = new HashSet<>();
-			List<String> unusedKeys = new ArrayList<>(keyList.results);
-			List<String> unusedValues = new ArrayList<>(valueList.results);
+			List<String> unusedKeys = new ArrayList<>(currentKeyList.results);
+			List<String> unusedValues = new ArrayList<>(currentValueList.results);
 
 			boolean isKey = true;
 			while (reader.canRead()) {
@@ -81,7 +89,7 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 					//  That means this key/value ends the argument, so we should do the suggestions now
 					builder = builder.createOffset(builder.getStart() + reader.getCursor() - (isQuoted ? 1 : 0));
 					if (!(isKey ? keyListEmpty : valueListEmpty)) {
-						return doResultSuggestions(readEscapedUntilEnd(reader), builder, isKey ? unusedKeys : unusedValues, isKey, isQuoted);
+						return doResultSuggestions(readEscapedUntilEnd(reader), builder, isKey ? unusedKeys : unusedValues, isKey, isQuoted, isKey ? currentKeyList : currentValueList);
 					}
 					return doEmptySuggestions(reader.getRemaining(), builder, isKey, isQuoted);
 				}
@@ -140,14 +148,13 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 
 			// We reached the end exactly when a key/value and its terminator ended
 			// Start suggestions for the next key/value
-			return startSuggestions(builder, isKey ? unusedKeys : unusedValues, isKey);
+			return startSuggestions(builder, isKey ? unusedKeys : unusedValues, isKey, isKey ? currentKeyList : currentValueList);
 		});
 	}
 
-	private CompletableFuture<Suggestions> startSuggestions(SuggestionsBuilder builder, List<String> unusedResults, boolean isKey) {
+	private CompletableFuture<Suggestions> startSuggestions(SuggestionsBuilder builder, List<String> unusedResults, boolean isKey, ResultList relevantList) {
 		// Nothing written yet, give the preferred suggestions
 		builder = builder.createOffset(builder.getStart() + builder.getRemaining().length());
-		ResultList relevantList = isKey ? keyList : valueList;
 
 		for (String result : unusedResults) {
 			// We either prefer quoted or unquoted, so this should only suggest 1 per result
@@ -164,11 +171,10 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 		return builder.buildFuture();
 	}
 
-	private CompletableFuture<Suggestions> doResultSuggestions(String ending, SuggestionsBuilder builder, List<String> unusedResults, boolean isKey, boolean isQuoted) {
+	private CompletableFuture<Suggestions> doResultSuggestions(String ending, SuggestionsBuilder builder, List<String> unusedResults, boolean isKey, boolean isQuoted, ResultList relevantList) {
 		String quotedInsert = isQuoted ? "\"" : "";
 		String relevantSeparator = isKey ? delimiter : separator;
 
-		ResultList relevantList = isKey ? keyList : valueList;
 		Map<String, String> suggestionsMap = isQuoted ? relevantList.quoted : relevantList.unquoted;
 
 		// Suggest key/value if they fit
@@ -246,8 +252,10 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 		// Read through the keys and values
 		Set<String> givenKeys = new HashSet<>();
 		Set<String> givenValues = new HashSet<>();
-		List<String> unusedKeys = new ArrayList<>(keyList.results);
-		List<String> unusedValues = new ArrayList<>(valueList.results);
+		List<String> currentKeys = keyListSupplier != null ? keyListSupplier.get() : null;
+		List<String> currentValues = valueListSupplier != null ? valueListSupplier.get() : null;
+		List<String> unusedKeys = currentKeys == null ? new ArrayList<>() : new ArrayList<>(currentKeys);
+		List<String> unusedValues = currentValues == null ? new ArrayList<>() : new ArrayList<>(currentValues);
 
 		boolean isKey = true;
 		while (reader.canRead()) {
@@ -405,7 +413,8 @@ public class MapArgument<K, V> extends Argument<LinkedHashMap> implements Greedy
 	}
 
 	private CommandSyntaxException invalidResult(String result, StringReader context, boolean isKey, boolean isQuoted) {
-		List<String> relaventList = (isKey ? keyList : valueList).results;
+		Supplier<List<String>> relaventSupplier = isKey ? keyListSupplier : valueListSupplier;
+		List<String> relaventList = relaventSupplier != null ? relaventSupplier.get() : null;
 
 		String message;
 		if ((isKey ? keyListEmpty : valueListEmpty) || relaventList.contains(result)) {

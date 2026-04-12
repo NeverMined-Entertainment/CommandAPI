@@ -1,6 +1,7 @@
 package dev.jorel.commandapi.arguments;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A builder to create a {@link MapArgument}
@@ -103,7 +104,22 @@ public class MapArgumentBuilder<K, V> {
 			 * @return this map argument builder
 			 */
 			public MapArgumentBuilderSuggestsValue withKeyList(List<String> keyList) {
-				return new MapArgumentBuilderSuggestsValue(keyList);
+				return new MapArgumentBuilderSuggestsValue(keyList != null ? () -> keyList : null);
+			}
+
+			/**
+			 * Provides a supplier of keys to suggest when a user types this argument. The supplier is invoked on every
+			 * tab-completion, so changes to the underlying data are always reflected. All keys given for the final map
+			 * must come from this list, otherwise a CommandSyntaxException is thrown.
+			 * <p>
+			 * Duplicate keys are never allowed since one key can only be mapped to one value. If a duplicate key is given,
+			 * a CommandSyntaxException is thrown.
+			 *
+			 * @param keyListSupplier A supplier that provides the list of keys to suggest.
+			 * @return this map argument builder
+			 */
+			public MapArgumentBuilderSuggestsValue withKeyList(Supplier<List<String>> keyListSupplier) {
+				return new MapArgumentBuilderSuggestsValue(keyListSupplier);
 			}
 
 			/**
@@ -116,7 +132,7 @@ public class MapArgumentBuilder<K, V> {
 			 * @return this map argument builder
 			 */
 			public MapArgumentBuilderSuggestsValue withoutKeyList() {
-				return withKeyList(null);
+				return new MapArgumentBuilderSuggestsValue(null);
 			}
 
 			/**
@@ -124,10 +140,10 @@ public class MapArgumentBuilder<K, V> {
 			 */
 			public class MapArgumentBuilderSuggestsValue {
 
-				private final List<String> keyList;
+				private final Supplier<List<String>> keyListSupplier;
 
-				public MapArgumentBuilderSuggestsValue(List<String> keyList) {
-					this.keyList = keyList;
+				public MapArgumentBuilderSuggestsValue(Supplier<List<String>> keyListSupplier) {
+					this.keyListSupplier = keyListSupplier;
 				}
 
 				/**
@@ -156,7 +172,38 @@ public class MapArgumentBuilder<K, V> {
 				 * @return this map argument builder
 				 */
 				public MapArgumentBuilderFinished withValueList(List<String> valueList, boolean allowDuplicates) {
-					return new MapArgumentBuilderFinished(valueList, allowDuplicates);
+					return new MapArgumentBuilderFinished(valueList != null ? () -> valueList : null, allowDuplicates);
+				}
+
+				/**
+				 * Provides a supplier of values to suggest when a user types this argument. The supplier is invoked on
+				 * every tab-completion, so changes to the underlying data are always reflected. All values given for the
+				 * final map must come from this list, otherwise a CommandSyntaxException is thrown.
+				 * <p>
+				 * Additionally, duplicate values are not allowed. If a duplicate value is given, a CommandSyntaxException
+				 * is thrown. To allow duplicate values, use the {@link #withValueList(Supplier, boolean)} method instead.
+				 *
+				 * @param valueListSupplier A supplier that provides the list of values to suggest.
+				 * @return this map argument builder
+				 */
+				public MapArgumentBuilderFinished withValueList(Supplier<List<String>> valueListSupplier) {
+					return withValueList(valueListSupplier, false);
+				}
+
+				/**
+				 * Provides a supplier of values to suggest when a user types this argument. The supplier is invoked on
+				 * every tab-completion, so changes to the underlying data are always reflected. All values given for the
+				 * final map must come from this list, otherwise a CommandSyntaxException is thrown.
+				 * <p>
+				 * If allowDuplicates is true, then multiple keys may be given the same value. Otherwise, if a duplicate
+				 * value is given, a CommandSyntaxException is thrown.
+				 *
+				 * @param valueListSupplier A supplier that provides the list of values to suggest.
+				 * @param allowDuplicates Decides if a value can be written more than once
+				 * @return this map argument builder
+				 */
+				public MapArgumentBuilderFinished withValueList(Supplier<List<String>> valueListSupplier, boolean allowDuplicates) {
+					return new MapArgumentBuilderFinished(valueListSupplier, allowDuplicates);
 				}
 
 				/**
@@ -169,7 +216,7 @@ public class MapArgumentBuilder<K, V> {
 				 * @return this map argument builder
 				 */
 				public MapArgumentBuilderFinished withoutValueList() {
-					return withValueList(null);
+					return new MapArgumentBuilderFinished(null, false);
 				}
 
 				/**
@@ -183,7 +230,7 @@ public class MapArgumentBuilder<K, V> {
 				 * @return this map argument builder
 				 */
 				public MapArgumentBuilderFinished withoutValueList(boolean allowDuplicates) {
-					return withValueList(null, allowDuplicates);
+					return new MapArgumentBuilderFinished(null, allowDuplicates);
 				}
 
 				/**
@@ -191,11 +238,11 @@ public class MapArgumentBuilder<K, V> {
 				 */
 				public class MapArgumentBuilderFinished {
 
-					private final List<String> valueList;
+					private final Supplier<List<String>> valueListSupplier;
 					private final boolean allowValueDuplicates;
 
-					public MapArgumentBuilderFinished(List<String> valueList, boolean allowValueDuplicates) {
-						this.valueList = valueList;
+					public MapArgumentBuilderFinished(Supplier<List<String>> valueListSupplier, boolean allowValueDuplicates) {
+						this.valueListSupplier = valueListSupplier;
 						this.allowValueDuplicates = allowValueDuplicates;
 					}
 
@@ -205,7 +252,7 @@ public class MapArgumentBuilder<K, V> {
 					 * @return a new {@link MapArgument}
 					 */
 					public MapArgument<K, V> build() {
-						return new MapArgument<>(nodeName, delimiter, separator, keyMapper, valueMapper, keyList, valueList, allowValueDuplicates);
+						return new MapArgument<>(nodeName, delimiter, separator, keyMapper, valueMapper, keyListSupplier, valueListSupplier, allowValueDuplicates);
 					}
 				}
 			}
