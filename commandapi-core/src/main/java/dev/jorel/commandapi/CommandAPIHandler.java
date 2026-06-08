@@ -750,7 +750,7 @@ extends AbstractArgument<?, ?, Argument, CommandSender>
 
 	<CommandSource> LiteralCommandNode<CommandSource> namespaceNode(LiteralCommandNode<CommandSource> original, String namespace) {
 		// Adapted from a section of `CraftServer#syncCommands`
-		LiteralCommandNode<CommandSource> clone = new LiteralCommandNode<>(
+		LiteralCommandNode<CommandSource> clone = new FilteredLiteralCommandNode<>(
 			namespace + ":" + original.getLiteral(),
 			original.getCommand(),
 			original.getRequirement(),
@@ -776,7 +776,7 @@ extends AbstractArgument<?, ?, Argument, CommandSender>
 	 * @return a brigadier LiteralArgumentBuilder representing a literal
 	 */
 	LiteralArgumentBuilder<Source> getLiteralArgumentBuilder(String commandName) {
-		return LiteralArgumentBuilder.literal(commandName);
+		return FilteredLiteralArgumentBuilder.literal(commandName);
 	}
 
 	/**
@@ -787,7 +787,7 @@ extends AbstractArgument<?, ?, Argument, CommandSender>
 	 * @return a brigadier LiteralArgumentBuilder representing a literal
 	 */
 	LiteralArgumentBuilder<Source> getLiteralArgumentBuilderArgument(String commandName, CommandPermission permission, Predicate<CommandSender> requirements) {
-		LiteralArgumentBuilder<Source> builder = LiteralArgumentBuilder.literal(commandName);
+		LiteralArgumentBuilder<Source> builder = FilteredLiteralArgumentBuilder.literal(commandName);
 		return builder.requires((Source css) -> permissionCheck(platform.getCommandSenderFromCommandSource(css),
 				permission, requirements));
 	}
